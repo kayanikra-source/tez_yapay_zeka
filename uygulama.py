@@ -9,9 +9,9 @@ st.markdown("Bu uygulama, serinin içindeki matematiksel bileşenlerin **konumla
 # Yan panel - Gelişmiş Kullanıcı Özellikleri
 st.sidebar.header("Seri Özelliklerini Girin")
 
-# Slider yerine artık sınırsız sayı girilebilen kutucuklar (10 sınırı kalktı!)
-pay_derecesi = st.sidebar.number_input("Payın Derecesi (n'in kuvveti)", min_value=0, max_value=1000, value=1)
-payda_derecesi = st.sidebar.number_input("Paydanın Derecesi (n'in kuvveti)", min_value=0, max_value=1000, value=1)
+# Kökler (0.5 vb.) için ondalıklı (float) sayı desteği eklendi!
+pay_derecesi = st.sidebar.number_input("Payın Derecesi (Kök için 0.5 yazabilirsiniz)", min_value=0.0, max_value=1000.0, value=1.0, step=0.5)
+payda_derecesi = st.sidebar.number_input("Paydanın Derecesi (Kök için 0.5 yazabilirsiniz)", min_value=0.0, max_value=1000.0, value=1.0, step=0.5)
 
 st.sidebar.markdown("---")
 # Alterne Seri eklendi
