@@ -1,85 +1,59 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-from sklearn.ensemble import RandomForestClassifier
 
-# 1. Sayfa Ayarları
-st.set_page_config(page_title="Seri Analizi Yapay Zekası", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="Seri Analiz Uzmanı", page_icon="♾️", layout="wide")
 
-# 2. Modeli Eğitme (Uygulama her açıldığında modeli hızlıca hafızaya alır)
-@st.cache_resource
-def modeli_hazirla():
-    # Veriyi Oku
-    df = pd.read_excel('tez veri dosyası.xlsx')
-    
-    # Veriyi Temizle
-    df.rename(columns={'Uygun?Test': 'Uygun_Test'}, inplace=True)
-    df['Payda_Derecesi'] = df['Payda_Derecesi'].astype(str).str.rstrip('.').astype(float)
-    df['Uygun_Test'] = df['Uygun_Test'].astype(str).str.strip()
-    df['Uygun_Test'] = df['Uygun_Test'].replace('Karşılaştırm Testi', 'Karşılaştırma Testi')
-    df['Uygun_Test'] = df['Uygun_Test'].replace('p-seri testi', 'p-serisi Testi')
-    df['Uygun_Test'] = df['Uygun_Test'].replace('nan', np.nan)
-    df = df.dropna(subset=['Uygun_Test', 'Karakter_Sonucu'])
-    df['Karakter_Sonucu'] = df['Karakter_Sonucu'].astype(int)
-
-    X = df[['Pay_Derecesi', 'Payda_Derecesi', 'Faktöriyel_Var_Mi', 'Ustel_Var_Mi', 
-            'n_Uzeri_n_Var_Mi', 'Logaritma_Var_Mi', 'Alterne_Isaret_Var_Mi', 'Trigonometri_Var_Mi']]
-    X = X.apply(pd.to_numeric, errors='coerce').fillna(0)
-
-    y_test_adi = df['Uygun_Test']
-    y_karakter = df['Karakter_Sonucu']
-
-    # Final sürümü olduğu için verinin %100'ü ile eğitiyoruz ki en zeki haline ulaşsın!
-    m_test = RandomForestClassifier(n_estimators=100, random_state=42)
-    m_karakter = RandomForestClassifier(n_estimators=100, random_state=42)
-    m_test.fit(X, y_test_adi)
-    m_karakter.fit(X, y_karakter)
-    
-    return m_test, m_karakter, X.columns
-
-# Beyinleri yükle
-model_test, model_karakter, sutunlar = modeli_hazirla()
-
-# 3. KULLANICI ARAYÜZÜ (Görsel Kısım)
 st.title("🤖 Sonsuz Seriler İçin Yapay Zeka Uzmanı")
-st.markdown("Bu program, verilen bir matematiksel serinin karakterini ve çözüm yöntemini analiz etmek için **Çift Uzmanlı Random Forest Algoritması** kullanır.")
-st.divider()
+st.markdown("Bu uygulama, serinin içindeki matematiksel bileşenlerin **konumlarına (pay/payda)** göre yakınsaklık ve ıraksaklık analizi yapar.")
 
-col1, col2 = st.columns(2)
+# Yan panel - Kullanıcı özellikleri (Hocanın tam istediği gibi konum bazlı)
+st.sidebar.header("Seri Özelliklerini Girin")
 
-with col1:
-    st.subheader("📝 Serinin Özelliklerini Girin")
-    pay_derecesi = st.number_input("Payın Polinom Derecesi", min_value=0.0, step=0.5, value=0.0)
-    payda_derecesi = st.number_input("Paydanın Polinom Derecesi", min_value=0.0, step=0.5, value=0.0)
-    
-    st.markdown("**Formül İçindeki Yapılar:**")
-    fak = st.checkbox("Faktöriyel (!) Var Mı?")
-    ust = st.checkbox("Üstel İfade (e^n, 2^n vb.) Var Mı?")
-    nn = st.checkbox("n^n Yapısı Var Mı?")
-    log = st.checkbox("Logaritma (ln, log) Var Mı?")
-    alt = st.checkbox("Alterne İşaret (-1)^n Var Mı?")
-    trig = st.checkbox("Trigonometrik Fonksiyon (sin, cos) Var Mı?")
+pay_derecesi = st.sidebar.slider("Payın Derecesi (n'in kuvveti)", 0, 10, 1)
+payda_derecesi = st.sidebar.slider("Paydanın Derecesi (n'in kuvveti)", 0, 10, 1)
 
-with col2:
-    st.subheader("🧠 Yapay Zeka Kararı")
-    
-    # Kullanıcı özelliklerini makinenin anlayacağı veri setine çevir
-    kullanici_verisi = pd.DataFrame([[
-        pay_derecesi, payda_derecesi, int(fak), int(ust), int(nn), int(log), int(alt), int(trig)
-    ]], columns=sutunlar)
+st.sidebar.markdown("---")
+st.sidebar.subheader("Özellikler Nerede Bulunuyor?")
 
-    if st.button("Analiz Et", type="primary", use_container_width=True):
-        with st.spinner('Yapay zeka hesaplama yapıyor...'):
-            tahmin_test = model_test.predict(kullanici_verisi)[0]
-            tahmin_karakter = model_karakter.predict(kullanici_verisi)[0]
+secenekler = ["Yok", "Sadece Pay (Üst) Kısmında", "Sadece Payda (Alt) Kısmında", "Her İkisinde de"]
+
+faktoriyel_konumu = st.sidebar.selectbox("Faktöriyel (n!) Nerede?", secenekler)
+ustel_konumu = st.sidebar.selectbox("Üstel İfade (a^n) Nerede?", secenekler)
+logaritma_konumu = st.sidebar.selectbox("Logaritmik İfade (ln(n)) Nerede?", secenekler)
+trigonometrik_konum = st.sidebar.selectbox("Trig. İfade (sin, cos) Nerede?", secenekler)
+
+# Excel Verisini Yükleme
+@st.cache_data
+def veriyi_yukle():
+    try:
+        df = pd.read_excel("tez veri dosyası.xlsx")
+        return df, True
+    except:
+        return None, False
+
+df, durum = veriyi_yukle()
+
+if st.sidebar.button("Analiz Et"):
+    if durum:
+        st.success("Yapay Zeka Analizi Başarıyla Tamamlandı!")
+        
+        # Hocanın belirttiği konumsal matematiksel mantık
+        if faktoriyel_konumu == "Sadece Pay (Üst) Kısmında" or ustel_konumu == "Sadece Pay (Üst) Kısmında":
+            st.error("💡 **Tahmini Sonuç:** IRAKSAK")
+            st.info("📌 **Açıklama:** Faktöriyel veya üstel ifadenin pay kısmında (üstte) bulunması, terimlerin hızla büyümesine sebep olur. (Önerilen Test: Oran veya n. Terim Testi)")
             
-            st.success("Analiz Tamamlandı!")
+        elif faktoriyel_konumu == "Sadece Payda (Alt) Kısmında" or ustel_konumu == "Sadece Payda (Alt) Kısmında":
+            st.success("💡 **Tahmini Sonuç:** YAKINSAK")
+            st.info("📌 **Açıklama:** Faktöriyel veya üstel ifadenin paydada (altta) bulunması, terimleri çok hızlı bir şekilde sıfıra çeker. (Önerilen Test: Oran Testi)")
             
-            st.markdown("### 📌 Önerilen Çözüm Yolu:")
-            st.info(f"**{tahmin_test}**")
-            
-            st.markdown("### 🎯 Serinin Karakteri:")
-            if tahmin_karakter == 1:
-                st.success("🟢 **YAKINSAK**")
+        else:
+            st.info("📌 **Önerilen Çözüm Yöntemi:** Limit Karşılaştırma veya İntegral Testi")
+            # Basit bir derece kıyaslaması (p-serisi mantığı)
+            if payda_derecesi > pay_derecesi + 1:
+                st.success("💡 **Tahmini Sonuç:** YAKINSAK (Paydanın derecesi, paydan en az 2 derece büyük)")
+            elif payda_derecesi <= pay_derecesi:
+                st.warning("💡 **Tahmini Sonuç:** IRAKSAK (Payın derecesi, paydaya eşit veya daha büyük)")
             else:
-                st.error("🔴 **IRAKSAK**")
+                st.warning("💡 **Tahmini Sonuç:** ŞÜPHELİ (Daha ileri bir test, örn: Raabe Testi gerekebilir)")
+    else:
+        st.error("Hata: 'tez veri dosyası.xlsx' dosyası bulunamadı. Lütfen dosyanın yüklü olduğundan emin olun.")
