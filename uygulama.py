@@ -9,12 +9,10 @@ st.markdown("Bu uygulama, serinin içindeki matematiksel bileşenlerin **konumla
 # Yan panel - Gelişmiş Kullanıcı Özellikleri
 st.sidebar.header("Seri Özelliklerini Girin")
 
-# Kökler (0.5 vb.) için ondalıklı (float) sayı desteği eklendi!
 pay_derecesi = st.sidebar.number_input("Payın Derecesi (Kök için 0.5 yazabilirsiniz)", min_value=0.0, max_value=1000.0, value=1.0, step=0.5)
 payda_derecesi = st.sidebar.number_input("Paydanın Derecesi (Kök için 0.5 yazabilirsiniz)", min_value=0.0, max_value=1000.0, value=1.0, step=0.5)
 
 st.sidebar.markdown("---")
-# Alterne Seri eklendi
 alterne_mi = st.sidebar.selectbox("Alterne Seri mi? (İçinde (-1)^n var mı?)", ["Hayır", "Evet"])
 
 st.sidebar.markdown("---")
@@ -22,7 +20,6 @@ st.sidebar.subheader("Özel İfadeler Nerede Bulunuyor?")
 
 secenekler = ["Yok", "Sadece Pay (Üst) Kısmında", "Sadece Payda (Alt) Kısmında", "Her İkisinde de"]
 
-# n^n eklendi ve en üste kondu (Çünkü en hızlı büyüyen o)
 n_uzeri_n_konumu = st.sidebar.selectbox("n^n İfadesi Nerede?", secenekler)
 faktoriyel_konumu = st.sidebar.selectbox("Faktöriyel (n!) Nerede?", secenekler)
 ustel_konumu = st.sidebar.selectbox("Üstel İfade (a^n) Nerede?", secenekler)
@@ -44,36 +41,49 @@ if st.sidebar.button("Analiz Et"):
     if durum:
         st.success("Yapay Zeka Analizi Başarıyla Tamamlandı!")
         
-        # 1. Aşama: Alterne Seri Kontrolü
-        if alterne_mi == "Evet":
-            st.info("📌 **Seri Tipi:** Bu bir Alterne Seri (İşaret değiştiren seri).")
-            st.write("💡 **Önerilen Test:** **Leibniz (Alterne Seri) Testi**. Mutlak yakınsaklık veya koşullu yakınsaklık durumları incelenmelidir.")
+        # --- GELİŞMİŞ DİNAMİK TEST ÖNERİ MOTORU ---
+        onerilen_testler = []
         
-        # 2. Aşama: Büyüme Hiyerarşisi (n^n > n! > a^n)
-        if n_uzeri_n_konumu == "Sadece Pay (Üst) Kısmında":
+        if alterne_mi == "Evet":
+            onerilen_testler.append("Leibniz (Alterne Seri) Testi")
+            
+        if n_uzeri_n_konumu != "Yok" or ustel_konumu != "Yok":
+            onerilen_testler.append("Cauchy Kök Testi")
+            
+        if faktoriyel_konumu != "Yok":
+            onerilen_testler.append("Oran (D'Alembert) Testi")
+            
+        if logaritma_konumu != "Yok":
+            onerilen_testler.append("İntegral Testi veya Cauchy Yoğunlaşma Testi")
+            
+        if trigonometrik_konum != "Yok":
+            onerilen_testler.append("Sıkıştırma (Sandviç) Teoremi veya Mutlak Yakınsaklık")
+            
+        # Eğer hiç özel ifade yoksa sadece polinom kuralları geçerlidir
+        if len(onerilen_testler) == 0 or (len(onerilen_testler) == 1 and alterne_mi == "Evet"):
+            onerilen_testler.append("Limit Karşılaştırma veya p-Serisi Testi")
+            
+        st.info(f"📌 **Bu Seri İçin Uygun Çözüm Yöntemleri:** {', '.join(onerilen_testler)}")
+
+        # --- YAKINSAKLIK/IRAKSAKLIK TAHMİNİ ---
+        if n_uzeri_n_konumu == "Sadece Pay (Üst) Kısmında" or faktoriyel_konumu == "Sadece Pay (Üst) Kısmında" or ustel_konumu == "Sadece Pay (Üst) Kısmında":
             st.error("💡 **Tahmini Sonuç:** IRAKSAK")
-            st.info("📌 **Açıklama:** 'n^n' ifadesi matematikte en hızlı büyüyen terimdir. Payda kısmında ne olursa olsun, genel terimi sonsuza çeker. (Önerilen Test: Kök Testi)")
+            st.write("📖 **Açıklama:** Paydaki çok hızlı büyüyen terimler, genel terim limitinin sıfır olmasını engeller (n. Terim Testi ile Iraksaklık).")
             
-        elif n_uzeri_n_konumu == "Sadece Payda (Alt) Kısmında":
+        elif n_uzeri_n_konumu == "Sadece Payda (Alt) Kısmında" or faktoriyel_konumu == "Sadece Payda (Alt) Kısmında" or ustel_konumu == "Sadece Payda (Alt) Kısmında":
             st.success("💡 **Tahmini Sonuç:** YAKINSAK")
-            st.info("📌 **Açıklama:** 'n^n' ifadesinin paydada olması, terimleri muazzam bir hızla sıfıra götürür ve seriyi yakınsatır. (Önerilen Test: Kök veya Oran Testi)")
-            
-        elif faktoriyel_konumu == "Sadece Pay (Üst) Kısmında" or ustel_konumu == "Sadece Pay (Üst) Kısmında":
-            st.error("💡 **Tahmini Sonuç:** IRAKSAK")
-            st.info("📌 **Açıklama:** Faktöriyel veya üstel ifadenin pay kısmında bulunması, terimlerin hızla büyümesine sebep olur. (Önerilen Test: Oran Testi)")
-            
-        elif faktoriyel_konumu == "Sadece Payda (Alt) Kısmında" or ustel_konumu == "Sadece Payda (Alt) Kısmında":
-            st.success("💡 **Tahmini Sonuç:** YAKINSAK")
-            st.info("📌 **Açıklama:** Faktöriyel veya üstel ifadenin paydada bulunması, terimleri çok hızlı bir şekilde sıfıra çeker. (Önerilen Test: Oran Testi)")
+            st.write("📖 **Açıklama:** Paydadaki hızlı büyüyen terimler seriyi çok hızlı sıfıra yaklaştırır ve seriyi yakınsatır.")
             
         else:
-            # 3. Aşama: Sadece Polinom Kaldıysa
-            st.info("📌 **Önerilen Çözüm Yöntemi:** Limit Karşılaştırma veya p-Serisi Testi")
+            # Sadece Polinom, Logaritma veya Trigonometri kaldıysa derece kontrolü
             if payda_derecesi > pay_derecesi + 1:
-                st.success("💡 **Tahmini Sonuç:** YAKINSAK (Paydanın derecesi, paydan en az 2 derece büyük)")
+                st.success("💡 **Tahmini Sonuç:** YAKINSAK")
+                st.write("📖 **Açıklama:** Paydanın derecesi, payın derecesinden 1'den fazla büyük olduğu için yakınsar (p-serisi mantığı).")
             elif payda_derecesi <= pay_derecesi:
-                st.warning("💡 **Tahmini Sonuç:** IRAKSAK (Payın derecesi, paydaya eşit veya daha büyük)")
+                st.error("💡 **Tahmini Sonuç:** IRAKSAK")
+                st.write("📖 **Açıklama:** Payın derecesi paydaya eşit veya daha büyük. Genel terim limiti sıfıra gitmez.")
             else:
-                st.warning("💡 **Tahmini Sonuç:** ŞÜPHELİ (Limit sıfıra gidiyor ancak harmonik seri gibi ıraksak olabilir. İntegral Testi gerekebilir.)")
+                st.warning("💡 **Tahmini Sonuç:** ŞÜPHELİ / IRAKSAK EĞİLİMLİ")
+                st.write("📖 **Açıklama:** Derece farkı 1 veya daha az (Örn: Harmonik seri). İntegral veya Limit Karşılaştırma testi ile detaylı incelenmelidir.")
     else:
-        st.error("Hata: 'tez veri dosyası.xlsx' dosyası bulunamadı. Lütfen dosyanın yüklü olduğundan emin olun.")
+        st.error("Hata: 'tez veri dosyası.xlsx' dosyası bulunamadı.")
