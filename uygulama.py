@@ -1,89 +1,85 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
 
-st.set_page_config(page_title="Seri Analiz Uzmanı", page_icon="♾️", layout="wide")
+# 1. Sayfa Ayarları
+st.set_page_config(page_title="Seri Analizi Yapay Zekası", page_icon="🤖", layout="wide")
 
+# 2. Modeli Eğitme (Uygulama her açıldığında modeli hızlıca hafızaya alır)
+@st.cache_resource
+def modeli_hazirla():
+    # Veriyi Oku
+    df = pd.read_excel('tez veri dosyası.xlsx')
+    
+    # Veriyi Temizle
+    df.rename(columns={'Uygun?Test': 'Uygun_Test'}, inplace=True)
+    df['Payda_Derecesi'] = df['Payda_Derecesi'].astype(str).str.rstrip('.').astype(float)
+    df['Uygun_Test'] = df['Uygun_Test'].astype(str).str.strip()
+    df['Uygun_Test'] = df['Uygun_Test'].replace('Karşılaştırm Testi', 'Karşılaştırma Testi')
+    df['Uygun_Test'] = df['Uygun_Test'].replace('p-seri testi', 'p-serisi Testi')
+    df['Uygun_Test'] = df['Uygun_Test'].replace('nan', np.nan)
+    df = df.dropna(subset=['Uygun_Test', 'Karakter_Sonucu'])
+    df['Karakter_Sonucu'] = df['Karakter_Sonucu'].astype(int)
+
+    X = df[['Pay_Derecesi', 'Payda_Derecesi', 'Faktöriyel_Var_Mi', 'Ustel_Var_Mi', 
+            'n_Uzeri_n_Var_Mi', 'Logaritma_Var_Mi', 'Alterne_Isaret_Var_Mi', 'Trigonometri_Var_Mi']]
+    X = X.apply(pd.to_numeric, errors='coerce').fillna(0)
+
+    y_test_adi = df['Uygun_Test']
+    y_karakter = df['Karakter_Sonucu']
+
+    # Final sürümü olduğu için verinin %100'ü ile eğitiyoruz ki en zeki haline ulaşsın!
+    m_test = RandomForestClassifier(n_estimators=100, random_state=42)
+    m_karakter = RandomForestClassifier(n_estimators=100, random_state=42)
+    m_test.fit(X, y_test_adi)
+    m_karakter.fit(X, y_karakter)
+    
+    return m_test, m_karakter, X.columns
+
+# Beyinleri yükle
+model_test, model_karakter, sutunlar = modeli_hazirla()
+
+# 3. KULLANICI ARAYÜZÜ (Görsel Kısım)
 st.title("🤖 Sonsuz Seriler İçin Yapay Zeka Uzmanı")
-st.markdown("Bu uygulama, serinin içindeki matematiksel bileşenlerin **konumlarına ve büyüme hızlarına** göre yakınsaklık/ıraksaklık analizi yapar.")
+st.markdown("Bu program, verilen bir matematiksel serinin karakterini ve çözüm yöntemini analiz etmek için **Çift Uzmanlı Random Forest Algoritması** kullanır.")
+st.divider()
 
-# Yan panel - Gelişmiş Kullanıcı Özellikleri
-st.sidebar.header("Seri Özelliklerini Girin")
+col1, col2 = st.columns(2)
 
-pay_derecesi = st.sidebar.number_input("Payın Derecesi (Kök için 0.5 yazabilirsiniz)", min_value=0.0, max_value=1000.0, value=1.0, step=0.5)
-payda_derecesi = st.sidebar.number_input("Paydanın Derecesi (Kök için 0.5 yazabilirsiniz)", min_value=0.0, max_value=1000.0, value=1.0, step=0.5)
+with col1:
+    st.subheader("📝 Serinin Özelliklerini Girin")
+    pay_derecesi = st.number_input("Payın Polinom Derecesi", min_value=0.0, step=0.5, value=0.0)
+    payda_derecesi = st.number_input("Paydanın Polinom Derecesi", min_value=0.0, step=0.5, value=0.0)
+    
+    st.markdown("**Formül İçindeki Yapılar:**")
+    fak = st.checkbox("Faktöriyel (!) Var Mı?")
+    ust = st.checkbox("Üstel İfade (e^n, 2^n vb.) Var Mı?")
+    nn = st.checkbox("n^n Yapısı Var Mı?")
+    log = st.checkbox("Logaritma (ln, log) Var Mı?")
+    alt = st.checkbox("Alterne İşaret (-1)^n Var Mı?")
+    trig = st.checkbox("Trigonometrik Fonksiyon (sin, cos) Var Mı?")
 
-st.sidebar.markdown("---")
-alterne_mi = st.sidebar.selectbox("Alterne Seri mi? (İçinde (-1)^n var mı?)", ["Hayır", "Evet"])
+with col2:
+    st.subheader("🧠 Yapay Zeka Kararı")
+    
+    # Kullanıcı özelliklerini makinenin anlayacağı veri setine çevir
+    kullanici_verisi = pd.DataFrame([[
+        pay_derecesi, payda_derecesi, int(fak), int(ust), int(nn), int(log), int(alt), int(trig)
+    ]], columns=sutunlar)
 
-st.sidebar.markdown("---")
-st.sidebar.subheader("Özel İfadeler Nerede Bulunuyor?")
-
-secenekler = ["Yok", "Sadece Pay (Üst) Kısmında", "Sadece Payda (Alt) Kısmında", "Her İkisinde de"]
-
-n_uzeri_n_konumu = st.sidebar.selectbox("n^n İfadesi Nerede?", secenekler)
-faktoriyel_konumu = st.sidebar.selectbox("Faktöriyel (n!) Nerede?", secenekler)
-ustel_konumu = st.sidebar.selectbox("Üstel İfade (a^n) Nerede?", secenekler)
-logaritma_konumu = st.sidebar.selectbox("Logaritmik İfade (ln(n)) Nerede?", secenekler)
-trigonometrik_konum = st.sidebar.selectbox("Trig. İfade (sin, cos) Nerede?", secenekler)
-
-# Excel Verisini Yükleme
-@st.cache_data
-def veriyi_yukle():
-    try:
-        df = pd.read_excel("tez veri dosyası.xlsx")
-        return df, True
-    except:
-        return None, False
-
-df, durum = veriyi_yukle()
-
-if st.sidebar.button("Analiz Et"):
-    if durum:
-        st.success("Yapay Zeka Analizi Başarıyla Tamamlandı!")
-        
-        # --- GELİŞMİŞ DİNAMİK TEST ÖNERİ MOTORU ---
-        onerilen_testler = []
-        
-        if alterne_mi == "Evet":
-            onerilen_testler.append("Leibniz (Alterne Seri) Testi")
+    if st.button("Analiz Et", type="primary", use_container_width=True):
+        with st.spinner('Yapay zeka hesaplama yapıyor...'):
+            tahmin_test = model_test.predict(kullanici_verisi)[0]
+            tahmin_karakter = model_karakter.predict(kullanici_verisi)[0]
             
-        if n_uzeri_n_konumu != "Yok" or ustel_konumu != "Yok":
-            onerilen_testler.append("Cauchy Kök Testi")
+            st.success("Analiz Tamamlandı!")
             
-        if faktoriyel_konumu != "Yok":
-            onerilen_testler.append("Oran (D'Alembert) Testi")
+            st.markdown("### 📌 Önerilen Çözüm Yolu:")
+            st.info(f"**{tahmin_test}**")
             
-        if logaritma_konumu != "Yok":
-            onerilen_testler.append("İntegral Testi veya Cauchy Yoğunlaşma Testi")
-            
-        if trigonometrik_konum != "Yok":
-            onerilen_testler.append("Sıkıştırma (Sandviç) Teoremi veya Mutlak Yakınsaklık")
-            
-        # Eğer hiç özel ifade yoksa sadece polinom kuralları geçerlidir
-        if len(onerilen_testler) == 0 or (len(onerilen_testler) == 1 and alterne_mi == "Evet"):
-            onerilen_testler.append("Limit Karşılaştırma veya p-Serisi Testi")
-            
-        st.info(f"📌 **Bu Seri İçin Uygun Çözüm Yöntemleri:** {', '.join(onerilen_testler)}")
-
-        # --- YAKINSAKLIK/IRAKSAKLIK TAHMİNİ ---
-        if n_uzeri_n_konumu == "Sadece Pay (Üst) Kısmında" or faktoriyel_konumu == "Sadece Pay (Üst) Kısmında" or ustel_konumu == "Sadece Pay (Üst) Kısmında":
-            st.error("💡 **Tahmini Sonuç:** IRAKSAK")
-            st.write("📖 **Açıklama:** Paydaki çok hızlı büyüyen terimler, genel terim limitinin sıfır olmasını engeller (n. Terim Testi ile Iraksaklık).")
-            
-        elif n_uzeri_n_konumu == "Sadece Payda (Alt) Kısmında" or faktoriyel_konumu == "Sadece Payda (Alt) Kısmında" or ustel_konumu == "Sadece Payda (Alt) Kısmında":
-            st.success("💡 **Tahmini Sonuç:** YAKINSAK")
-            st.write("📖 **Açıklama:** Paydadaki hızlı büyüyen terimler seriyi çok hızlı sıfıra yaklaştırır ve seriyi yakınsatır.")
-            
-        else:
-            # Sadece Polinom, Logaritma veya Trigonometri kaldıysa derece kontrolü
-            if payda_derecesi > pay_derecesi + 1:
-                st.success("💡 **Tahmini Sonuç:** YAKINSAK")
-                st.write("📖 **Açıklama:** Paydanın derecesi, payın derecesinden 1'den fazla büyük olduğu için yakınsar (p-serisi mantığı).")
-            elif payda_derecesi <= pay_derecesi:
-                st.error("💡 **Tahmini Sonuç:** IRAKSAK")
-                st.write("📖 **Açıklama:** Payın derecesi paydaya eşit veya daha büyük. Genel terim limiti sıfıra gitmez.")
+            st.markdown("### 🎯 Serinin Karakteri:")
+            if tahmin_karakter == 1:
+                st.success("🟢 **YAKINSAK**")
             else:
-                st.warning("💡 **Tahmini Sonuç:** ŞÜPHELİ / IRAKSAK EĞİLİMLİ")
-                st.write("📖 **Açıklama:** Derece farkı 1 veya daha az (Örn: Harmonik seri). İntegral veya Limit Karşılaştırma testi ile detaylı incelenmelidir.")
-    else:
-        st.error("Hata: 'tez veri dosyası.xlsx' dosyası bulunamadı.")
+                st.error("🔴 **IRAKSAK**")
