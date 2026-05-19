@@ -98,39 +98,45 @@ if st.sidebar.button("Analiz Et"):
 
 
 
-import streamlit as st
-import numpy as np
-import pandas as pd
 
-# --- MEVCUT KODLARIN BURANIN ÜSTÜNDE KALACAK ---
-# Mevcut ML modelin, tahmin butonların vb. hiçbir şeye dokunmuyoruz.
 
-st.divider() # Eski arayüz ile yeni kısmı ayırmak için şık bir çizgi
 
-st.subheader("🔍 Matematiksel Sezgi: Kısmi Toplamlar Analizi")
-st.write("Makine öğrenmesi modelinin sezgisini, matematiksel grafiklerle doğrulayın.")
 
-# st.expander kullanarak bu kısmı kapalı bir kutu içine alıyoruz, 
-# böylece ana ekranı kalabalıklaştırmaz ve eski yapıyı bozmaz.
 with st.expander("Serinin Davranışını ve Kısmi Toplam Grafiğini İncele"):
     
-    # Kullanıcıdan veya eski kodundan formülü alıyoruz
-    # (Eğer mevcut kodunda formülü tuttuğun bir değişken varsa 'value' kısmına onu yazabilirsin)
-    formul_girdisi = st.text_input("Grafiği çizilecek genel terim (Örn: 1/(n**2) veya 1/n):", value="1/(n**2)")
+    # Kullanıcıya daha geniş örnekler sunalım
+    formul_girdisi = st.text_input("Grafiği çizilecek genel terim (Örn: 1/(n**2), sin(n)/n, (-1)**n/n):", value="1/(n**2)")
     terim_sayisi = st.slider("Hesaplanacak Terim Sayısı (N)", min_value=10, max_value=500, value=100)
     
     try:
-        # 1'den N'e kadar n değerleri
         n_degerleri = np.arange(1, terim_sayisi + 1)
         
-        # Formülü hesaplıyoruz
-        # n değişkenini numpy array olarak algılayıp tüm diziyi tek seferde hesaplar
-        a_n = eval(formul_girdisi, {"n": n_degerleri, "np": np, "math": np})
+        # 1. DÜZELTME: Kullanıcı n^2 yazarsa, Python'ın anladığı n**2 formatına otomatik çevir
+        islenmis_formul = formul_girdisi.replace("^", "**")
         
-        # KISMİ TOPLAMLARI (Partial Sums) HESAPLAMA
+        # 2. DÜZELTME: Python'a matematiksel fonksiyonları öğreten sözlük
+        import math
+        matematik_sozlugu = {
+            "n": n_degerleri,
+            "sin": np.sin,
+            "cos": np.cos,
+            "tan": np.tan,
+            "exp": np.exp,
+            "log": np.log,    # Doğal logaritma (ln)
+            "ln": np.log,     # ln yazılırsa da anlasın
+            "sqrt": np.sqrt,
+            "pi": np.pi,
+            "e": np.e,
+            "abs": np.abs,    # Mutlak değer
+            "factorial": np.vectorize(math.factorial) # Faktöriyel hesaplaması
+        }
+        
+        # Formülü sadece bizim belirlediğimiz güvenli matematik sözlüğü ile hesapla
+        a_n = eval(islenmis_formul, {"__builtins__": None}, matematik_sozlugu)
+        
+        # Kısmi Toplamları Hesaplama
         S_n = np.cumsum(a_n)
         
-        # Streamlit'te çizmek için verileri bir DataFrame'e koyuyoruz
         df_grafik = pd.DataFrame({
             "n": n_degerleri,
             "Terimler (a_n)": a_n,
@@ -146,6 +152,14 @@ with st.expander("Serinin Davranışını ve Kısmi Toplam Grafiğini İncele"):
         st.line_chart(df_grafik["Terimler (a_n)"])
         
     except Exception as e:
-        st.warning("Grafik çizilirken bir hata oluştu. Lütfen Python matematiksel yazım kurallarına dikkat edin (örneğin n^2 yerine n**2 kullanın).")
+        # 3. DÜZELTME: Hata durumunda kullanıcıya neyi yanlış yazdığını gösterelim
+        st.warning(f"Grafik çizilemedi. Lütfen geçerli bir matematiksel ifade girdiğinizden emin olun. (Detay: {e})")
 
-# --- MEVCUT KODLARIN BURANIN ALTINDA DEVAM EDEBİLİR ---
+
+
+
+
+
+
+
+
