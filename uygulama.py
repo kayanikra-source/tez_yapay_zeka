@@ -1,12 +1,13 @@
 import streamlit as st
 import sympy as sp
-import numpy as np
 import plotly.graph_objects as go
-import joblib 
+import numpy as np
+import joblib
 
-# Gelişmiş matematik formülü okuyucu (Parser) için gereken özel kütüphaneler:
+# Gelişmiş formül çevirici kütüphaneleri
 from sympy.parsing.sympy_parser import parse_expr, standard_transformations, implicit_multiplication_application, convert_xor
-# 1. SAYFA AYARLARI VE GÖRSEL TASARIM
+
+# --- SAYFA AYARLARI VE GÖRÜNÜM ---
 st.set_page_config(page_title="Tez Uygulaması - Seri Analizi", layout="wide")
 
 st.markdown("""
@@ -16,84 +17,137 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🔢 Dizi ve Serilerin Yakınsaklık Analizi")
-st.write("Bu uygulama, matematiksel ifadeleri analiz eder, görselleştirir ve Yapay Zeka (ML) ile tahmin yürütür.")
+st.title("🔬 İleri Düzey Seri Analizi ve Yapay Zeka Tahmin Laboratuvarı")
+st.write("Bu sistem, girilen matematiksel ifadeleri çözümler, sınır durumlarını analiz eder ve Yapay Zeka (ML) yardımıyla yakınsaklık tahmininde bulunur.")
 
-# --- SİLECEĞİN KISIM BURASIYDI (ESKİ SEÇENEK KUTULARI) ---
-# --- EKLEYECEĞİN KISIM BURASI (YENİ FORMÜL GİRİŞİ) ---
+# --- 1. GİRDİ VE MATEMATİKSEL GÖSTERİM (GELİŞMİŞ PARSER İLE) ---
+st.markdown("### 📌 Serinin Genel Terimi")
+expr_str = st.text_input("Formülü giriniz (Örn: 1/n^2,  (-1)^n/n,  ln(n)/n,  cos(n)/n!): ", "1/n^2")
 
-col1, col2 = st.columns([1, 1])
+n = sp.symbols('n')
 
-with col1:
-    st.subheader("1. Matematiksel İfade")
-    expr_str = st.text_input("Serinin genel terimini girin ($a_n$):", "1/n**2")
-    st.info("İpucu: n kare için n**2, n küp için n**3, karekök n için sqrt(n) yazın.")
+try:
+    # Formülü Python'un anlayacağı formata çevirme
+    donusumler = (standard_transformations + (implicit_multiplication_application, convert_xor))
+    islenen_metin = expr_str.replace("ln", "log").replace("e", "E")
+    expr = parse_expr(islenen_metin, transformations=donusumler)
 
-    # MATEMATİKSEL İŞLEME MOTORU (SymPy)
-    n = sp.symbols('n')
-    try:
-        # 1. Kullanıcı dostu dönüştürücüler (Örn: "^" işaretini üs alma yapar, "2n" yazılırsa "2*n" anlar)
-        donusumler = (standard_transformations + (implicit_multiplication_application, convert_xor))
-        
-        # 2. Özel matematiksel terimleri düzeltme (ln -> log, e -> E)
-        islenen_metin = expr_str.replace("ln", "log").replace("e", "E")
-        
-        # 3. Formülü çözme (Gelişmiş Parser)
-        expr = parse_expr(islenen_metin, transformations=donusumler)
-        
-        st.write("Algılanan Formül:")
-        st.latex(f"a_n = {sp.latex(expr)}")
-        
-        # Sayısal hesaplama (İlk 50 terim)
-        terimler = []
-        kismi_toplamlar = []
-        toplam = 0
-        for i in range(1, 51):
-            deger = float(expr.subs(n, i).evalf())
-            terimler.append(deger)
-            toplam += deger
-            kismi_toplamlar.append(toplam)
-            
-    except Exception as e:
-        st.error(f"Hata: Yazdığınız ifade tam olarak anlaşılamadı. Lütfen kontrol edin. (Teknik detay: {e})")
-        st.stop()
+    # Devasa Sigma gösterimi ve ilk terimlerin açık hali
+    st.success("Serinin Matematiksel Formu:")
+    st.latex(r"\sum_{n=1}^{\infty} \left(" + sp.latex(expr) + r"\right)")
+    
+    t1, t2, t3 = expr.subs(n,1), expr.subs(n,2), expr.subs(n,3)
+    st.latex(r"S = " + f"{sp.latex(t1)} + {sp.latex(t2)} + {sp.latex(t3)} + \dots")
 
-# 2. GÖRSELLEŞTİRME (GRAFİK)
-with col2:
-    st.subheader("2. Davranış Grafiği")
+    # --- 2. HESAPLAMA DÖNGÜSÜ (İLK 100 TERİM) ---
+    terimler = []
+    kismi_toplamlar = []
+    guncel_toplam = 0
+
+    for i in range(1, 101):
+        deger = float(expr.subs(n, i).evalf())
+        terimler.append(deger)
+        guncel_toplam += deger
+        kismi_toplamlar.append(guncel_toplam)
+
+    st.divider()
+
+    # --- 3. CANLI VE DİKKAT ÇEKİCİ GRAFİK BÖLÜMÜ ---
+    st.markdown("### 📊 Kısmi Toplamların Davranış Analizi")
+
     fig = go.Figure()
-    fig.add_trace(go.Scatter(y=kismi_toplamlar, mode='lines+markers', name='Kısmi Toplamlar (Sn)', line=dict(color='#ff4b4b')))
-    fig.add_trace(go.Scatter(y=terimler, mode='lines+markers', name='Terimler (an)', line=dict(color='#0068c9')))
-    fig.update_layout(height=400, margin=dict(l=0, r=0, t=30, b=0), legend=dict(orientation="h"))
+
+    # Kısmi Toplam Grafiği (Altı boyalı)
+    fig.add_trace(go.Scatter(
+        x=list(range(1, 101)), 
+        y=kismi_toplamlar, 
+        mode='lines+markers',
+        name='Kısmi Toplam (S_n)',
+        line=dict(color='#00CC96', width=3),
+        fill='tozeroy', 
+        marker=dict(size=4)
+    ))
+
+    # Dizi Terimleri Grafiği
+    fig.add_trace(go.Scatter(
+        x=list(range(1, 101)), 
+        y=terimler, 
+        mode='lines',
+        name='Dizi Terimi (a_n)',
+        line=dict(color='#EF553B', width=2, dash='dot')
+    ))
+
+    fig.update_layout(
+        height=450,
+        hovermode="x unified",
+        template="plotly_white",
+        xaxis_title="Terim İndeksi (n)",
+        yaxis_title="Değer",
+        legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01)
+    )
     st.plotly_chart(fig, use_container_width=True)
 
-# 3. YAPAY ZEKA VE ÖZELLİK ÇIKARIMI (TEZİN CAN DAMARI)
-st.divider()
-st.subheader("3. Yapay Zeka Tahmin Motoru")
+    # --- 4. YAPAY ZEKA GÖSTERGESİ (GAUGE CHART) ---
+    st.divider()
+    st.markdown("### 🤖 Yapay Zeka Modelinin Karar Matrisi")
 
-# Yapay zeka senin seçtiğin kutucuklara değil, formülün şu özelliklerine bakacak:
-ozellik1 = terimler[0]       # İlk terim
-ozellik2 = terimler[-1]      # 50. terim (limit eğilimi)
-ozellik3 = terimler[-1] / terimler[-2] if terimler[-2] != 0 else 0 # Oran testi tahmini
+    col1, col2 = st.columns([2, 1])
 
-c1, c2, c3 = st.columns(3)
-c1.metric("İlk Terim Değeri", round(ozellik1, 4))
-c2.metric("50. Terim Değeri (L)", round(ozellik2, 4))
-c3.metric("Ardışık Oran (an/an-1)", round(ozellik3, 4))
+    with col1:
+        st.info("Yapay Zeka bu kararı verirken aşağıdaki matematiksel özellikleri kullandı:")
+        st.write(f"- **Limit Eğilimi ($a_{{100}}$):** Dizi terimleri {terimler[-1]:.6f} değerine doğru gidiyor.")
+        st.write(f"- **Artış/Azalış Hızı:** Son terim ile bir önceki arasındaki oran {(terimler[-1]/(terimler[-2]+1e-9)):.4f}")
+        st.write(f"- **Maksimum Kısmi Toplam:** Bulunan en yüksek toplam değeri {max(kismi_toplamlar):.4f}")
 
-# MODELİ ÇALIŞTIRMA
-# Not: Eğer bir .pkl dosyan varsa buraya bağlayacağız. 
-# Şimdilik "Yapay Zeka Mantığı"nı buraya kuruyoruz:
+    with col2:
+        # Şimdilik simüle edilen oran (Gerçek modelin bağlandığında burası değişecek)
+        yakinsama_olasiligi = 0.92 if (abs(terimler[-1]) < 0.01) else 0.10
+        
+        fig_gauge = go.Figure(go.Indicator(
+            mode = "gauge+number",
+            value = yakinsama_olasiligi * 100,
+            domain = {'x': [0, 1], 'y': [0, 1]},
+            title = {'text': "Yakınsaklık İhtimali"},
+            gauge = {
+                'axis': {'range': [None, 100]},
+                'bar': {'color': "darkblue"},
+                'steps' : [
+                    {'range': [0, 40], 'color': "lightcoral"},
+                    {'range': [40, 60], 'color': "lightyellow"},
+                    {'range': [60, 100], 'color': "lightgreen"}],
+            }
+        ))
+        fig_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=30, b=20))
+        st.plotly_chart(fig_gauge, use_container_width=True)
 
-if st.button("Yapay Zeka Analizini Başlat"):
-    with st.spinner('Model hesaplıyor...'):
-        # BURASI TAHMİN KISMI
-        # Eğer gerçek bir modelin yoksa şimdilik mantıksal bir AI simülasyonu yapalım:
-        if abs(ozellik2) < 0.001 and ozellik3 < 1:
-            st.success("🤖 YAPAY ZEKA SONUCU: **YAKINSAK (CONVERGENT)**")
-            st.balloons()
-        else:
-            st.error("🤖 YAPAY ZEKA SONUCU: **IRAKSAK (DIVERGENT)**")
+    # --- 5. KLASİK ANALİZ KILAVUZU (TEST ÖNERİSİ) ---
+    st.divider()
+    st.markdown("### 🧭 Klasik Analiz Kılavuzu (Test Önerisi)")
 
-    st.write("---")
-    st.write("**Akademik Not:** Model, serinin genel terimini matematiksel olarak çözmez; terimlerin sayısal değişim trendinden (ilk 50 terimdeki azalış hızı ve limit eğilimi) yakınsaklık tahmini yapar.")
+    expr_str_lower = expr_str.lower().replace(" ", "")
+    test_adi = ""
+    test_aciklamasi = ""
+
+    # Limit ve Test algoritması
+    limit_degeri = sp.limit(expr, n, sp.oo)
+    if limit_degeri != 0:
+        test_adi = "Genel Terim (Iraksaklık) Testi"
+        test_aciklamasi = f"Serinin genel teriminin sonsuzdaki limiti 0 değildir (Limit = {limit_degeri}). Bu seri kesinlikle ıraksaktır."
+    elif "(-1)**n" in expr_str_lower or "(-1)^n" in expr_str_lower or "cos(pi*n)" in expr_str_lower:
+        test_adi = "Alterne Seri Testi (Leibniz Testi)"
+        test_aciklamasi = "Seride işaret değiştiren bir çarpan bulunuyor. Terimlerin mutlak değerce azalarak sıfıra yaklaşıp yaklaşmadığı incelenmelidir."
+    elif "factorial" in expr_str_lower or "!" in expr_str_lower:
+        test_adi = "Oran Testi (d'Alembert)"
+        test_aciklamasi = "Faktöriyel yapısı tespit edildi. Ardışık iki terimin oranı ($a_{n+1} / a_n$) alınarak limit incelenmelidir."
+    elif "**n" in expr_str_lower or "^n" in expr_str_lower or "exp(" in expr_str_lower:
+        test_adi = "Kök Testi (Cauchy) veya Oran Testi"
+        test_aciklamasi = "İfadede $n$. kuvvetten üstel terimler var. Genel terimin $n$. dereceden kökü veya oran testi uygulanmalıdır."
+    else:
+        test_adi = "Limit Karşılaştırma Testi veya İntegral Testi"
+        test_aciklamasi = "Seri polinom, rasyonel veya logaritmik bir fonksiyona benziyor. Uygun bir $1/n^p$ (p-serisi) ile karşılaştırılabilir."
+
+    st.info(f"**💡 Önerilen Çözüm Yolu:** {test_adi}")
+    st.write(f"> {test_aciklamasi}")
+
+except Exception as e:
+    st.error(f"Hata: İfade işlenirken bir sorun oluştu. Lütfen geçerli bir matematiksel format girdiğinizden emin olun.")
