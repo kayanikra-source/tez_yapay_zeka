@@ -2,8 +2,10 @@ import streamlit as st
 import sympy as sp
 import numpy as np
 import plotly.graph_objects as go
-import joblib # Eğer modelin varsa yüklemek için
+import joblib 
 
+# Gelişmiş matematik formülü okuyucu (Parser) için gereken özel kütüphaneler:
+from sympy.parsing.sympy_parser import parse_expr, standard_transformations, implicit_multiplication_application, convert_xor
 # 1. SAYFA AYARLARI VE GÖRSEL TASARIM
 st.set_page_config(page_title="Tez Uygulaması - Seri Analizi", layout="wide")
 
@@ -30,7 +32,15 @@ with col1:
     # MATEMATİKSEL İŞLEME MOTORU (SymPy)
     n = sp.symbols('n')
     try:
-        expr = sp.sympify(expr_str)
+        # 1. Kullanıcı dostu dönüştürücüler (Örn: "^" işaretini üs alma yapar, "2n" yazılırsa "2*n" anlar)
+        donusumler = (standard_transformations + (implicit_multiplication_application, convert_xor))
+        
+        # 2. Özel matematiksel terimleri düzeltme (ln -> log, e -> E)
+        islenen_metin = expr_str.replace("ln", "log").replace("e", "E")
+        
+        # 3. Formülü çözme (Gelişmiş Parser)
+        expr = parse_expr(islenen_metin, transformations=donusumler)
+        
         st.write("Algılanan Formül:")
         st.latex(f"a_n = {sp.latex(expr)}")
         
@@ -45,7 +55,7 @@ with col1:
             kismi_toplamlar.append(toplam)
             
     except Exception as e:
-        st.error("Hata: Yazdığınız ifade anlaşılamadı. Lütfen matematiksel formatta yazın.")
+        st.error(f"Hata: Yazdığınız ifade tam olarak anlaşılamadı. Lütfen kontrol edin. (Teknik detay: {e})")
         st.stop()
 
 # 2. GÖRSELLEŞTİRME (GRAFİK)
