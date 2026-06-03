@@ -24,11 +24,10 @@ st.divider()
 
 # --- ÇÖKMEYİ ENGELLEYEN GÜVENLİK ZIRHI ---
 def guvenli_float(deger):
-    """Matematiksel bir limiti veya ifadeyi çökmeksizin sayıya çevirir."""
     try:
         return float(deger.evalf())
     except:
-        return 999.0 # Çökmek yerine ML modeline 'limit yok' anlamında yüksek bir sayı yollar
+        return 999.0 
 
 # --- ML MODELİ (ARKA PLAN) ---
 @st.cache_resource
@@ -58,7 +57,7 @@ st.markdown("### ✍️ Matematiksel Formül ve Sınırlar")
 with st.form("hesaplama_formu"):
     col1, col2, col3 = st.columns([3, 1, 1])
     with col1:
-        expr_str = st.text_input("Genel Terimi giriniz (İstediğiniz harfi kullanabilirsiniz, Örn: 1/x^2, 2^-k, n/(n+1)):", "2^-n")
+        expr_str = st.text_input("Genel Terimi giriniz (Örn: 1/n^2, 2^-k, x/(x^3+1)):", "1/n^2")
     with col2:
         n_start = st.number_input("Başlangıç Değeri =", value=1, step=1)
     with col3:
@@ -67,7 +66,6 @@ with st.form("hesaplama_formu"):
     hesapla = st.form_submit_button("Analiz Et")
 
 if hesapla:
-    # Kullanıcıdan gelen metni kusursuz matematik diline çeviriyoruz
     islenen = expr_str.replace("ln", "log").replace("e", "exp(1)")
     islenen = islenen.replace("−", "-").replace("–", "-").replace("{", "(").replace("}", ")").replace(",", ".").replace(" ", "")
     donusumler = (standard_transformations + (implicit_multiplication_application, convert_xor))
@@ -75,22 +73,17 @@ if hesapla:
     try:
         expr = parse_expr(islenen, transformations=donusumler)
         
-        # --- DİNAMİK DEĞİŞKEN YAKALAYICI (n, x, k ne varsa bulur) ---
         semboller = list(expr.free_symbols)
-        if len(semboller) > 0:
-            degisken = semboller[0] 
-        else:
-            degisken = sp.symbols('n') # Eğer formülde harf yoksa (örn: sadece 5 girerse) varsayılan 'n' olsun
+        degisken = semboller[0] if len(semboller) > 0 else sp.symbols('n')
             
-        # Hata kontrolü: İlk terim tanımsız mı?
         ilk_terim = expr.subs(degisken, n_start)
         if ilk_terim.has(sp.zoo) or ilk_terim.has(sp.nan) or "I" in str(ilk_terim.evalf()):
-            st.error(f"👨‍🏫 **Öğretmen Uyarısı:** Başlangıç değerini yanlış seçtiniz! Terim {degisken}={n_start} için tanımsızdır. Lütfen başlangıç değerini değiştirin.")
+            st.error(f"👨‍🏫 **Öğretmen Uyarısı:** Başlangıç değerini yanlış seçtiniz! Terim {degisken}={n_start} için tanımsızdır. Lütfen değiştirin.")
             st.stop()
             
         st.latex(r"\sum_{" + str(degisken) + r"=" + str(n_start) + r"}^{" + str(n_end) + r"} \left(" + sp.latex(expr) + r"\right)")
         
-        # 3. KISMİ TOPLAM HESAPLAMASI (Çökme engelli)
+        # 3. KISMİ TOPLAM HESAPLAMASI
         terimler = []
         guncel_toplam = 0
         kismi_toplamlar = []
@@ -100,7 +93,7 @@ if hesapla:
             try:
                 deger = float(expr.subs(degisken, i).evalf())
             except:
-                deger = 0 # Beklenmeyen karmaşık bir sayı gelirse grafiği çökertmesin diye atla
+                deger = 0 
             terimler.append(deger)
             guncel_toplam += deger
             kismi_toplamlar.append(guncel_toplam)
@@ -114,29 +107,33 @@ if hesapla:
         fig.update_layout(title="Kısmi Toplamların Eğilimi", xaxis_title=f"Terim Sayısı ({degisken})", yaxis_title="Değer", template="plotly_white", hovermode="x unified")
         st.plotly_chart(fig, use_container_width=True)
 
-        # 5. ÖĞRETMEN GÖZÜNDEN TEORİK ANALİZ (Güvenli Limitleme)
-        st.markdown("### 👨‍🏫 Öğretmen Notu: Bu Soru Nasıl Çözülür?")
+        # 5. MATEMATİKSEL SEZGİSİ YÜKSEK ÖĞRETMEN NOTU
+        st.markdown("### 👨‍🏫 Öğretmen Notu: Bir Matematikçi Bu Soruyu Nasıl Çözer?")
         
         lim_num = guvenli_float(sp.limit(sp.Abs(expr), degisken, sp.oo))
-        oran_num = guvenli_float(sp.limit(sp.Abs(expr.subs(degisken, degisken + 1) / expr), degisken, sp.oo))
-        kok_num = guvenli_float(sp.limit(sp.Abs(expr)**(1/degisken), degisken, sp.oo))
         
         try:
             gercek_sonuc = sp.Sum(expr, (degisken, n_start, sp.oo)).is_convergent()
         except:
-            gercek_sonuc = None # SymPy'ın bile gücünün yetmediği sorularda sistemi çökertmez
+            gercek_sonuc = None 
+
+        # Hangi testin uygun olduğunu belirlemek için akıllı dizi taraması
+        islenen_temiz = islenen.replace("(", "").replace(")", "").replace("-", "")
+        degisken_uste_mi = f"**{degisken}" in islenen_temiz or f"^{degisken}" in islenen_temiz or expr.has(sp.exp)
 
         not_metni = ""
         if lim_num != 0 and lim_num != 999:
-            not_metni = "Birçok test yöntemi vardır ancak bu soruda **ilk bakmamız gereken yer n. Terim Testi (Iraksaklık Testi)** olmalıdır. Dizinin sonsuzdaki limiti sıfır olmadığı için diğer uzun testlere (Oran, Kök vs.) bakmaya hiç gerek yoktur; seri direkt ıraksaktır."
+            not_metni = "Bu soruda **ilk bakmamız gereken yer n. Terim Testi (Iraksaklık Testi)** olmalıdır. Dizinin sonsuzdaki limiti sıfır olmadığı için hiçbir teste bakmaya gerek yoktur; seri direkt ıraksaktır."
         elif expr.has(sp.factorial):
-            not_metni = "Matematikte **faktöriyel (!)** içeren serileri çözmek için tartışmasız en iyi yol **d'Alembert Oran Testi**'dir. Ardışık terimleri birbirine oranlayarak sonuca en hızlı şekilde ulaşırız."
-        elif "**" in islenen or "^" in islenen:
-            not_metni = "Terimin tamamında veya büyük bir kısmında **üs (kuvvet)** görüyorsak, en pratik yöntem **Cauchy Kök Testi**'dir. İfadenin kökünü alarak üslerden kurtuluruz."
+            not_metni = "Matematikte **faktöriyel (!)** içeren serileri çözmek için akla ilk gelen ve tartışmasız en iyi yöntem **d'Alembert Oran Testi**'dir. Ardışık terimleri oranladığımızda faktöriyeller sadeleşecek ve sonuca hızlıca ulaşacağız."
+        elif degisken_uste_mi:
+            not_metni = f"Dikkat ederseniz değişkenimiz ({degisken}) bir sayının üssü (kuvveti) konumunda. İçinde üstel ifadeler ($2^n, e^x$ vb.) barındıran serileri çözmek için en pratik yöntem **Cauchy Kök Testi**'dir. İfadenin {degisken}. dereceden kökünü alarak üslerden kurtuluruz."
         elif "(-1)**" in islenen or "(-1)^" in islenen:
-            not_metni = "İfade işaret değiştirerek ilerliyor. Bu durumda **Leibniz Alterne Seri Testi** kullanılmalıdır. Terimlerin mutlak değerce azalıp sıfıra gittiğini göstermeliyiz."
+            not_metni = "İfade işaret değiştirerek (+, -, +, -) ilerliyor. Bu durumda klasik testler yerine **Leibniz Alterne Seri Testi** kullanılmalıdır. Sadece mutlak değerce azalıp sıfıra gittiğini göstermemiz yeterlidir."
+        elif expr.has(sp.log):
+            not_metni = "Genel terimde logaritmik (ln) bir yapı görüyoruz. Bu tür yavaş büyüyen/azalan fonksiyonlarda klasik Oran veya Kök testleri genellikle 1 çıkar ve belirsiz kalır. Bu yüzden **İntegral Testi** uygulamak en mantıklı hamledir."
         else:
-            not_metni = "Bu seri rasyonel veya logaritmik bir yapıya sahip. Bu tip sorularda en çok **Limit Karşılaştırma Testi (P-Serisi ile)** veya fonksiyon sürekli/azalan ise **İntegral Testi** tercih edilir."
+            not_metni = f"Burada değişkenimiz tabanda, kuvvet ise sabit bir sayı (Örn: $1/{degisken}^2$ veya ${degisken}^3$). Bu form, klasik bir polinom/rasyonel yapı veya **P-Serisi** formudur. Bu seriyi çözerken akla ilk gelen yöntem, kuvveti ($p$) kontrol ederek doğrudan **P-Serisi Kriteri**'ni kullanmak veya en yüksek dereceli terimleri çekerek **Limit Karşılaştırma Testi** uygulamaktır."
             
         st.write(f"> {not_metni}")
 
@@ -148,7 +145,7 @@ if hesapla:
             else:
                 st.markdown("<div class='iraksak'>IRAKSAK</div>", unsafe_allow_html=True)
         else:
-            st.warning("Bu seri standart testlerle kesin olarak belirlenemeyecek kadar karmaşık (Belirsiz). ML algoritması bu noktada devreye girmelidir.")
+            st.warning("Bu seri standart testlerle kesin olarak belirlenemeyecek kadar karmaşık (Belirsiz). ML algoritması bu noktada tahmin yürütmelidir.")
 
     except Exception as e:
          st.error(f"Formül çevrilemedi. Lütfen matematiksel yazım kurallarına dikkat edin. (Teknik detay: {e})")
