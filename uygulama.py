@@ -12,8 +12,6 @@ st.set_page_config(page_title="Tez Projesi - Seri Analizi", layout="wide")
 st.markdown("""
     <style>
     .main { background-color: #f8f9fa; }
-    .yakinsak { color: #27ae60; font-weight: bold; font-size: 24px; padding: 10px; border: 2px solid #27ae60; border-radius: 5px; text-align: center; background-color: #eafaf1;}
-    .iraksak { color: #c0392b; font-weight: bold; font-size: 24px; padding: 10px; border: 2px solid #c0392b; border-radius: 5px; text-align: center; background-color: #fdedec;}
     </style>
     """, unsafe_allow_html=True)
 
@@ -57,7 +55,7 @@ st.markdown("### ✍️ Matematiksel Formül ve Sınırlar")
 with st.form("hesaplama_formu"):
     col1, col2, col3 = st.columns([3, 1, 1])
     with col1:
-        expr_str = st.text_input("Genel Terimi giriniz (Örn: 1/n^2, 2^-k, x/(x^3+1)):", "1/n^2")
+        expr_str = st.text_input("Genel Terimi giriniz (Örn: sin(n)/n^2, cos(x)/x^3, 1/n!):", "sin(n)/n^2")
     with col2:
         n_start = st.number_input("Başlangıç Değeri =", value=1, step=1)
     with col3:
@@ -117,35 +115,37 @@ if hesapla:
         except:
             gercek_sonuc = None 
 
-        # Hangi testin uygun olduğunu belirlemek için akıllı dizi taraması
         islenen_temiz = islenen.replace("(", "").replace(")", "").replace("-", "")
         degisken_uste_mi = f"**{degisken}" in islenen_temiz or f"^{degisken}" in islenen_temiz or expr.has(sp.exp)
 
         not_metni = ""
-        if lim_num != 0 and lim_num != 999:
+        
+        if lim_num != 0 and lim_num != 999 and not (expr.has(sp.sin) or expr.has(sp.cos)):
             not_metni = "Bu soruda **ilk bakmamız gereken yer n. Terim Testi (Iraksaklık Testi)** olmalıdır. Dizinin sonsuzdaki limiti sıfır olmadığı için hiçbir teste bakmaya gerek yoktur; seri direkt ıraksaktır."
         elif expr.has(sp.factorial):
             not_metni = "Matematikte **faktöriyel (!)** içeren serileri çözmek için akla ilk gelen ve tartışmasız en iyi yöntem **d'Alembert Oran Testi**'dir. Ardışık terimleri oranladığımızda faktöriyeller sadeleşecek ve sonuca hızlıca ulaşacağız."
         elif degisken_uste_mi:
             not_metni = f"Dikkat ederseniz değişkenimiz ({degisken}) bir sayının üssü (kuvveti) konumunda. İçinde üstel ifadeler ($2^n, e^x$ vb.) barındıran serileri çözmek için en pratik yöntem **Cauchy Kök Testi**'dir. İfadenin {degisken}. dereceden kökünü alarak üslerden kurtuluruz."
+        elif expr.has(sp.sin) or expr.has(sp.cos) or expr.has(sp.tan) or expr.has(sp.cot):
+            not_metni = "Genel terimde trigonometrik fonksiyonlar (sin, cos vb.) bulunuyor. Bu fonksiyonlar sürekli dalgalanma yapar ancak düzenli alterne seri değildirler. Burada uygulanması gereken en akıllıca yöntem **Mutlak Yakınsaklık ve Karşılaştırma (Sıkıştırma) Testidir**. Her zaman $|sin(x)| \le 1$ ve $|cos(x)| \le 1$ eşitsizliğinden faydalanarak; seriyi bildiğimiz, kendisinden daha büyük bir seriyle (örneğin P-serisiyle) üstten sınırlarız."
         elif "(-1)**" in islenen or "(-1)^" in islenen:
             not_metni = "İfade işaret değiştirerek (+, -, +, -) ilerliyor. Bu durumda klasik testler yerine **Leibniz Alterne Seri Testi** kullanılmalıdır. Sadece mutlak değerce azalıp sıfıra gittiğini göstermemiz yeterlidir."
         elif expr.has(sp.log):
             not_metni = "Genel terimde logaritmik (ln) bir yapı görüyoruz. Bu tür yavaş büyüyen/azalan fonksiyonlarda klasik Oran veya Kök testleri genellikle 1 çıkar ve belirsiz kalır. Bu yüzden **İntegral Testi** uygulamak en mantıklı hamledir."
         else:
-            not_metni = f"Burada değişkenimiz tabanda, kuvvet ise sabit bir sayı (Örn: $1/{degisken}^2$ veya ${degisken}^3$). Bu form, klasik bir polinom/rasyonel yapı veya **P-Serisi** formudur. Bu seriyi çözerken akla ilk gelen yöntem, kuvveti ($p$) kontrol ederek doğrudan **P-Serisi Kriteri**'ni kullanmak veya en yüksek dereceli terimleri çekerek **Limit Karşılaştırma Testi** uygulamaktır."
+            not_metni = f"Burada değişkenimiz tabanda, kuvvet ise sabit bir sayı. Bu form, klasik bir polinom/rasyonel yapı veya **P-Serisi** formudur. Bu seriyi çözerken akla ilk gelen yöntem, kuvveti ($p$) kontrol ederek doğrudan **P-Serisi Kriteri**'ni kullanmak veya en yüksek dereceli terimleri çekerek **Limit Karşılaştırma Testi** uygulamaktır."
             
         st.write(f"> {not_metni}")
 
-        # 6. RENKLİ YAKINSAKLIK/IRAKSAKLIK SONUCU
+        # 6. STREAMLIT'İN ORİJİNAL RENKLİ KUTULARI
         st.markdown("### 🎯 Analiz Sonucu")
         if gercek_sonuc is not None:
             if gercek_sonuc:
-                st.markdown("<div class='yakinsak'>YAKINSAK</div>", unsafe_allow_html=True)
+                st.success("✅ **SONUÇ: YAKINSAK**")
             else:
-                st.markdown("<div class='iraksak'>IRAKSAK</div>", unsafe_allow_html=True)
+                st.error("❌ **SONUÇ: IRAKSAK**")
         else:
-            st.warning("Bu seri standart testlerle kesin olarak belirlenemeyecek kadar karmaşık (Belirsiz). ML algoritması bu noktada tahmin yürütmelidir.")
+            st.warning("Bu seri standart testlerle kesin olarak belirlenemeyecek kadar karmaşık (Belirsiz). ML algoritması bu noktada devreye girmelidir.")
 
     except Exception as e:
          st.error(f"Formül çevrilemedi. Lütfen matematiksel yazım kurallarına dikkat edin. (Teknik detay: {e})")
