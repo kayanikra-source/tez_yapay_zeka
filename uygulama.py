@@ -19,13 +19,16 @@ st.title("📈 Seri ve Dizilerin ML ile Otomatik Tahmini")
 st.markdown("- **Kullanılan Yöntem:** Nöro-Sembolik Yapay Zeka & RandomForest Sınıflandırıcısı")
 st.divider()
 
-def guvenli_float(deger):
+# --- TAM KORUMALI LİMİT VE FLOAT ÇEVİRİCİ ---
+def guvenli_limit(ifade, degisken):
+    """SymPy trigonometrik dalgalanmalarda kilitlenmesin diye özel hata yakalayıcı."""
     try:
-        return float(deger.evalf())
+        sonuc = sp.limit(ifade, degisken, sp.oo)
+        return float(sonuc.evalf())
     except:
-        return 999.0 
+        return 999.0 # SymPy pes ederse ML modeline 'limit belirsiz' sinyali yollar
 
-# --- ML MODELİ (TABLOYA GÖRE ZENGİNLEŞTİRİLDİ) ---
+# --- ML MODELİ ---
 @st.cache_resource
 def model_olustur():
     veri_satirlari = []
@@ -54,7 +57,7 @@ st.markdown("### ✍️ Matematiksel Formül ve Sınırlar")
 with st.form("hesaplama_formu"):
     col1, col2, col3 = st.columns([3, 1, 1])
     with col1:
-        expr_str = st.text_input("Genel Terimi giriniz (Örn: cos(n)/n, (-1)^n/n, n^n/n!):", "cos(n)/n")
+        expr_str = st.text_input("Genel Terimi giriniz (Örn: cos(n)/n, (-1)^n/n, 1/(n*log(n))):", "cos(n)/n")
     with col2:
         n_start = st.number_input("Başlangıç Değeri =", value=1, step=1)
     with col3:
@@ -101,11 +104,12 @@ if hesapla:
         fig.update_layout(title="Kısmi Toplamların Eğilimi", xaxis_title=f"Terim Sayısı ({degisken})", template="plotly_white", hovermode="x unified")
         st.plotly_chart(fig, use_container_width=True)
 
-        # --- YENİ EKLENEN ML TAHMİN MOTORU ---
+        # --- YENİ EKLENEN ML TAHMİN MOTORU (Çökme Korumalı) ---
         islenen_str = str(expr).replace(" ", "")
-        lim_num = guvenli_float(sp.limit(sp.Abs(expr), degisken, sp.oo))
-        oran_num = guvenli_float(sp.limit(sp.Abs(expr.subs(degisken, degisken + 1) / expr), degisken, sp.oo))
-        kok_num = guvenli_float(sp.limit(sp.Abs(expr)**(1/degisken), degisken, sp.oo))
+        
+        lim_num = guvenli_limit(sp.Abs(expr), degisken)
+        oran_num = guvenli_limit(sp.Abs(expr.subs(degisken, degisken + 1) / expr), degisken)
+        kok_num = guvenli_limit(sp.Abs(expr)**(1/degisken), degisken)
         
         has_fac_val = 1 if expr.has(sp.factorial) else 0
         has_n_n_val = 1 if f"{degisken}**{degisken}" in islenen_str else 0
@@ -117,17 +121,18 @@ if hesapla:
         ml_olasilik = ml_model.predict_proba(yeni_veri)[0][1]
         ml_karari = "YAKINSAK" if ml_olasilik > 0.5 else "IRAKSAK"
 
-        # --- SEMBOLİK (SYMPY) YAKINSAKLIK KONTROLÜ ---
+        # --- SEMBOLİK (SYMPY) YAKINSAKLIK KONTROLÜ (Trig Korumalı) ---
+        gercek_sonuc, mutlak_sonuc = None, None
         try:
-            gercek_sonuc = sp.Sum(expr, (degisken, n_start, sp.oo)).is_convergent()
-            mutlak_sonuc = sp.Sum(sp.Abs(expr), (degisken, n_start, sp.oo)).is_convergent()
+            # Trigonometrik veya çok karmaşık serilerde SymPy is_convergent fonksiyonu kilitlenir, bunu atlıyoruz.
+            if not (expr.has(sp.sin) or expr.has(sp.cos) or expr.has(sp.tan) or expr.has(sp.cot)):
+                gercek_sonuc = sp.Sum(expr, (degisken, n_start, sp.oo)).is_convergent()
+                mutlak_sonuc = sp.Sum(sp.Abs(expr), (degisken, n_start, sp.oo)).is_convergent()
         except:
-            gercek_sonuc = None
-            mutlak_sonuc = None
+            pass
 
-        # --- ÖĞRETMEN NOTU (Trigonometri Düzeltildi) ---
+        # --- ÖĞRETMEN NOTU ---
         st.markdown("### 👨‍🏫 Öğretmen Notu: Bu Soru İçin Hangi Test Uygundur?")
-        
         not_metni = ""
         
         if lim_num != 0 and lim_num != 999 and not (expr.has(sp.sin) or expr.has(sp.cos)):
@@ -168,9 +173,9 @@ if hesapla:
         else:
             st.warning("⚙️ **Sembolik Çözüm Yetersiz:** Bu seri standart klasik testlerle SymPy tarafından kesin olarak çözülemedi.")
             if ml_karari == "YAKINSAK":
-                st.success(f"🤖 **YAPAY ZEKA TAHMİNİ:** Makine Öğrenmesi Modeli, özellik çıkarımlarına (limit, oran) dayanarak bu serinin **%{ml_olasilik*100:.1f}** olasılıkla **YAKINSAK** olduğunu öngörüyor.")
+                st.success(f"🤖 **YAPAY ZEKA TAHMİNİ:** Makine Öğrenmesi Modeli, özellik çıkarımlarına dayanarak bu serinin **%{ml_olasilik*100:.1f}** olasılıkla **YAKINSAK** olduğunu öngörüyor.")
             else:
-                st.error(f"🤖 **YAPAY ZEKA TAHMİNİ:** Makine Öğrenmesi Modeli, özellik çıkarımlarına (limit, oran) dayanarak bu serinin **%{(1-ml_olasilik)*100:.1f}** olasılıkla **IRAKSAK** olduğunu öngörüyor.")
+                st.error(f"🤖 **YAPAY ZEKA TAHMİNİ:** Makine Öğrenmesi Modeli, özellik çıkarımlarına dayanarak bu serinin **%{(1-ml_olasilik)*100:.1f}** olasılıkla **IRAKSAK** olduğunu öngörüyor.")
 
     except Exception as e:
-         st.error(f"Formül çevrilemedi veya hesaplanırken karmaşık bir asimptota denk gelindi. Matematiksel olarak daha sade bir formül girmeyi deneyin. (Teknik detay: {e})")
+         st.error(f"Formül matematik motorunu kilitledi. (Teknik detay: Limit veya arayüz arızası).")
