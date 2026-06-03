@@ -26,6 +26,19 @@ def guvenli_limit(ifade, degisken):
     except:
         return 999.0 
 
+# Formülün içindeki n^n veya 2^n yapılarını bulan zeki matematiksel tarayıcılar
+def degisken_ussu_degisken_mi(ifade, var):
+    for arg in sp.preorder_traversal(ifade):
+        if arg.is_Pow and arg.exp.has(var) and arg.base.has(var):
+            return True
+    return False
+
+def sabit_ussu_degisken_mi(ifade, var):
+    for arg in sp.preorder_traversal(ifade):
+        if arg.is_Pow and arg.exp.has(var) and not arg.base.has(var):
+            return True
+    return False
+
 # --- ML MODELİ ---
 @st.cache_resource
 def model_olustur():
@@ -38,12 +51,13 @@ def model_olustur():
         has_n_n = random.choice([0, 1])
         has_log = random.choice([0, 1])
         is_alt = random.choice([0, 1])
-        is_rational = random.choice([0, 1])
+        is_p_series = random.choice([0, 1])
         
-        yakinsak_mi = 1 if (oran_num < 0.95 or kok_num < 0.95) and lim_num == 0 else 0
-        veri_satirlari.append([lim_num, oran_num, kok_num, has_fac, has_n_n, has_log, is_alt, is_rational, yakinsak_mi])
+        # P-Serisi ise oran testi 1 çıksa bile yakınsaklık kurallarını öğrenmesi için:
+        yakinsak_mi = 1 if (oran_num < 0.95 or kok_num < 0.95 or (is_p_series==1 and random.choice([0,1])==1)) and lim_num == 0 else 0
+        veri_satirlari.append([lim_num, oran_num, kok_num, has_fac, has_n_n, has_log, is_alt, is_p_series, yakinsak_mi])
         
-    df = pd.DataFrame(veri_satirlari, columns=["Terim_Limiti", "Oran_Limiti", "Kok_Limiti", "Faktoriyel_Var_Mi", "N_Uzeri_N_Var_Mi", "Log_Var_Mi", "Alterne_Mi", "Rasyonel_Mi", "Yakinsak_Mi"])
+    df = pd.DataFrame(veri_satirlari, columns=["Terim_Limiti", "Oran_Limiti", "Kok_Limiti", "Faktoriyel", "N_Uzeri_N", "Logaritma", "Alterne", "P_Serisi", "Yakinsak_Mi"])
     model = RandomForestClassifier(n_estimators=100, max_depth=6, random_state=42)
     model.fit(df.drop(columns=["Yakinsak_Mi"]), df["Yakinsak_Mi"])
     return model
@@ -72,7 +86,6 @@ if hesapla:
         expr = parse_expr(islenen, transformations=donusumler)
         semboller = list(expr.free_symbols)
         degisken = semboller[0] if len(semboller) > 0 else sp.symbols('n')
-        d = str(degisken)
             
         ilk_terim = expr.subs(degisken, n_start)
         if ilk_terim.has(sp.zoo) or ilk_terim.has(sp.nan) or "I" in str(ilk_terim.evalf()):
@@ -103,20 +116,31 @@ if hesapla:
         fig.update_layout(title="Kısmi Toplamların Eğilimi", xaxis_title=f"Terim Sayısı ({degisken})", template="plotly_white", hovermode="x unified")
         st.plotly_chart(fig, use_container_width=True)
 
-        # --- YENİ EKLENEN ML TAHMİN MOTORU ---
-        islenen_str = str(expr).replace(" ", "")
-        
+        # --- YENİ EKLENEN ML TAHMİN MOTORU VE ÖZELLİK ÇIKARIMI ---
         lim_num = guvenli_limit(sp.Abs(expr), degisken)
         oran_num = guvenli_limit(sp.Abs(expr.subs(degisken, degisken + 1) / expr), degisken)
         kok_num = guvenli_limit(sp.Abs(expr)**(1/degisken), degisken)
         
+        islenen_str = str(expr).replace(" ", "")
         has_fac_val = 1 if expr.has(sp.factorial) else 0
-        has_n_n_val = 1 if f"{d}**{d}" in islenen_str else 0
+        has_n_n_val = 1 if degisken_ussu_degisken_mi(expr, degisken) else 0
         has_log_val = 1 if expr.has(sp.log) else 0
         is_alt_val = 1 if "(-1)**" in islenen_str or "(-1)^" in expr_str else 0
-        is_rat_val = 1 if "/" in islenen_str else 0
         
-        yeni_veri = pd.DataFrame([[lim_num, oran_num, kok_num, has_fac_val, has_n_n_val, has_log_val, is_alt_val, is_rat_val]], columns=["Terim_Limiti", "Oran_Limiti", "Kok_Limiti", "Faktoriyel_Var_Mi", "N_Uzeri_N_Var_Mi", "Log_Var_Mi", "Alterne_Mi", "Rasyonel_Mi"])
+        is_rat_func = False
+        num_deg = 0
+        try:
+            if expr.is_rational_function(degisken):
+                is_rat_func = True
+                num, den = sp.fraction(sp.cancel(expr))
+                if num.is_polynomial(degisken):
+                    num_deg = sp.degree(num, degisken)
+        except:
+            pass
+
+        is_p_series_val = 1 if (is_rat_func and num_deg == 0) else 0
+
+        yeni_veri = pd.DataFrame([[lim_num, oran_num, kok_num, has_fac_val, has_n_n_val, has_log_val, is_alt_val, is_p_series_val]], columns=["Terim_Limiti", "Oran_Limiti", "Kok_Limiti", "Faktoriyel", "N_Uzeri_N", "Logaritma", "Alterne", "P_Serisi"])
         ml_olasilik = ml_model.predict_proba(yeni_veri)[0][1]
         ml_karari = "YAKINSAK" if ml_olasilik > 0.5 else "IRAKSAK"
 
@@ -128,47 +152,46 @@ if hesapla:
         except:
             pass
 
-        # --- DÜZELTİLMİŞ ÖĞRETMEN NOTU (İnsani Sezgi) ---
+        # --- DÜZELTİLMİŞ ÖĞRETMEN NOTU (Tez Odaklı) ---
         st.markdown("### 👨‍🏫 Öğretmen Notu: Bu Soru İçin Hangi Test Uygundur?")
         not_metni = ""
         
         if lim_num != 0 and lim_num != 999 and not (expr.has(sp.sin) or expr.has(sp.cos)):
-            not_metni = "**N. Terim Testi:** Serinin genel teriminin limiti sıfır olmadığı için, test tablosuna bakmaya gerek kalmadan seri **Iraksaktır**."
-        elif "(-1)**" in islenen_str or "(-1)^" in expr_str:
-            not_metni = f"İfadede $(-1)^{degisken}$ bulunuyor. Bu bir **Alterne Seri**'dir. Mutlak yakınsaklık kontrolü yapılmalı, genel terimin azalarak sıfıra gittiği **Leibniz Testi** ile kanıtlanmalıdır."
-        elif expr.has(sp.factorial):
-            not_metni = "Genel terimde faktöriyel ($n!$) içerdiği için, ilk düşünülmesi gereken yöntem **Oran Testi (d'Alembert)** olmalıdır."
-        elif f"{d}**{d}" in islenen_str or f"{d}^{d}" in expr_str:
-            not_metni = f"Tabanda ve üste aynı değişken var ($n^n$). Bu tip durumlarda serinin $n.$ dereceden kökünü almak işleri çok kolaylaştıracağından **Cauchy Kök Testi** uygulanmalıdır."
-        elif ("**" in islenen_str and f"**{d}" in islenen_str) or ("^" in expr_str and f"^{d}" in expr_str) or expr.has(sp.exp):
-            not_metni = f"Değişkenimiz üs (kuvvet) konumunda (Örn: $2^n$ veya $e^n$). Bu form, **Geometrik Seri** veya Kök testine çok uygun bir yapıdır. Ortak çarpanın mutlak değerce 1'den küçük olup olmadığına bakılmalıdır."
+            not_metni = "**Iraksaklık (n. Terim) Testi:** Yakınsak bir serinin genel teriminin limiti sıfır olmalıdır. Bu serinin limiti sıfır olmadığı için diğer testlere bakmaya gerek yoktur; seri doğrudan **Iraksaktır**."
+        elif is_alt_val:
+            not_metni = "**Leibniz Testi (Alterne Seriler):** İfadede ardışık işaret değiştiren bir çarpan var. Terimlerin mutlak değerce monoton azalarak sıfıra gittiği gösterilirse **Leibniz Testi** ile yakınsadığı kanıtlanır. Mutlak değerinin yakınsaklığı ayrıca P-serisi veya Limit Karşılaştırma ile incelenmelidir."
+        elif has_fac_val:
+            not_metni = "**D'alembert Oran Testi:** Genel terimde faktöriyel ($n!$) mevcut. Faktöriyel içeren serilerde ardışık terimlerin oranının limitini ($\lim a_{n+1}/a_n$) inceleyen **Oran Testi** kullanılmalıdır; böylece faktöriyeller sadeleşir."
+        elif has_n_n_val:
+            not_metni = f"**Cauchy Kök Testi:** Değişken hem tabanda hem de üste (kuvvet) bulunuyor (${degisken}^{degisken}$ gibi). Bu durumda serinin genel teriminin n. dereceden kökünü almak işlemleri basitleştireceğinden **Kök Testi** uygulanmalıdır."
+        elif sabit_ussu_degisken_mi(expr, degisken) or expr.has(sp.exp):
+            not_metni = f"**Geometrik Seri / Kök Testi:** Değişken sadece üs konumunda (Örn: $2^{degisken}$ veya $e^{degisken}$). Bu yapı **Geometrik Seri** formundadır. Ortak çarpanın mutlak değerce 1'den küçük olup olmadığına veya Kök Testine bakılarak çözülür."
         elif expr.has(sp.log):
-            not_metni = "İfadede logaritma ($\ln$) fonksiyonu var. Türevi alındığında rasyonel bir ifadeye döndüğü için, bu tip sorularda **İntegral Testi** en sağlıklı sonucu verir."
+            not_metni = "**İntegral Testi:** İfadede logaritma ($\ln$) fonksiyonu var. Türevi alındığında rasyonel bir ifadeye döndüğü ve genelde yavaş büyüyen bir fonksiyon olduğu için **İntegral Testi** en sağlıklı sonucu verir."
         elif expr.has(sp.sin) or expr.has(sp.cos) or expr.has(sp.tan) or expr.has(sp.cot):
-            not_metni = f"İfadede trigonometrik fonksiyonlar ($\sin, \cos$ vb.) bulunuyor. Eğer paydada güçlü bir seri varsa ($n^2$ gibi) **Karşılaştırma (Sıkıştırma) Testi** uygulanır. Ancak $\cos({degisken})/{degisken}$ gibi durumlarda **Dirichlet Testi** kullanılarak koşullu yakınsadığı ispatlanır."
-        elif "/" in islenen_str:
-            # Kesirli ifadelerin P-Serisi vs Rasyonel ayrımı (Tamamen düzeltildi)
-            if ("+" in islenen_str) or ("-" in islenen_str[1:]): # Negatif üsleri atlamak için [1:]
-                not_metni = "Bu ifade polinom bölü polinom şeklinde **Rasyonel bir ifadedir**. En yüksek dereceli terimler çekilerek uygun bir P-serisi ile **Limit Karşılaştırma Testi** yapılmalıdır."
+            not_metni = "**Sıkıştırma veya Dirichlet Testi:** İfadede trigonometrik fonksiyonlar bulunuyor ve bunlar dalgalanır. Paydadaki polinom kuvvetliyse mutlak değerce sınırlandırılarak **Sıkıştırma Testi**; $\cos(n)/n$ gibi zayıfsa dalgalanmadan dolayı **Dirichlet Testi** kullanılarak koşullu yakınsaklığı incelenir."
+        elif is_rat_func:
+            if num_deg == 0:
+                not_metni = f"**P-Serisi (Harmonik) Testi:** Bu ifade sabit bir sayının değişkenin kuvvetine bölümü şeklinde, yani temel bir $1/{degisken}^p$ (**P-Serisi**) formundadır. Paydadaki $p$ kuvvetinin $1$'den büyük olup olmadığı kontrol edilerek doğrudan çözülür."
             else:
-                not_metni = f"Bu formül $1/{degisken}^p$ yapısına sahip en temel **P-Serisi** formudur. $p$ kuvvetinin 1'den büyük olup olmadığına bakılarak doğrudan çözülür."
+                not_metni = "**Limit Karşılaştırma Testi:** Bu ifade, payı ve paydası değişkene bağlı **Rasyonel** bir yapıdadır (Polinom/Polinom). Pay ve paydadaki en yüksek dereceli terimler çekilerek elde edilen basit bir P-serisi ile Limit Karşılaştırma Testi yapılmalıdır."
         else:
-            not_metni = "Bu seri standart kuralların birleşimini içeriyor. Genel terimin gidişatına göre Oran, Kök veya Limit Karşılaştırma testlerinden biri denenmelidir."
+            not_metni = "Bu seri temel kuralların karmaşık bir birleşimini içeriyor. Genel terimin asimptotik davranışına göre uygun bir P-serisi ile Limit Karşılaştırma Testi denenmelidir."
 
         st.write(f"> {not_metni}")
 
-        # --- AKILLI YAKINSAKLIK SONUCU (Sadece Gerektiğinde Mutlak/Koşullu Yazar) ---
+        # --- AKILLI YAKINSAKLIK SONUCU ---
         st.markdown("### 🎯 Analiz Sonucu")
         if gercek_sonuc is not None:
             if gercek_sonuc == True:
-                # Sadece içinde eksi işareti veya dalgalanma varsa mutlak/koşullu yorumu yap
+                # Sadece dalgalanma veya eksi işareti varsa Koşullu/Mutlak ayrımı yap
                 if is_alt_val == 1 or expr.has(sp.sin) or expr.has(sp.cos):
                     if mutlak_sonuc == True:
                         st.success("✅ **SONUÇ: MUTLAK YAKINSAK** (Hem serinin kendisi hem mutlak değeri yakınsıyor)")
                     else:
-                        st.warning("⚠️ **SONUÇ: KOŞULLU YAKINSAK** (Seri yakınsıyor ancak mutlak değeri ıraksıyor. Klasik bir Leibniz/Dirichlet durumu!)")
+                        st.warning("⚠️ **SONUÇ: KOŞULLU YAKINSAK** (Seri yakınsıyor ancak mutlak değeri ıraksıyor. Leibniz/Dirichlet durumu!)")
                 else:
-                    # Normal, pozitif seriler için sadece sade bir şekilde "Yakınsak" yaz
+                    # Pozitif terimli serilerde (1/n^2 gibi) kafasını karıştırmadan sadece YAKINSAK de:
                     st.success("✅ **SONUÇ: YAKINSAK**")
             else:
                 st.error("❌ **SONUÇ: IRAKSAK**")
@@ -180,4 +203,4 @@ if hesapla:
                 st.error(f"🤖 **YAPAY ZEKA TAHMİNİ:** Makine Öğrenmesi Modeli bu serinin **%{(1-ml_olasilik)*100:.1f}** olasılıkla **IRAKSAK** olduğunu öngörüyor.")
 
     except Exception as e:
-         st.error(f"Formül matematik motorunu kilitledi. Lütfen daha sade bir yazım deneyin.")
+         st.error(f"Formül matematik motorunu kilitledi. Lütfen daha sade bir yazım deneyin. Detay: {e}")
