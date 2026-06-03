@@ -50,7 +50,7 @@ st.markdown("### ✍️ Matematiksel Formül ve Sınırlar")
 with st.form("hesaplama_formu"):
     col1, col2, col3 = st.columns([3, 1, 1])
     with col1:
-        expr_str = st.text_input("Genel Terimi (n'e bağlı) giriniz (Örn: 1/n^2, (-1)^n/n, 3^n/n!):", "1/n^2")
+        expr_str = st.text_input("Genel Terimi (n'e bağlı) giriniz (Örn: 2^-n, 1/n^2, (-1)^n/n):", "2^-n")
     with col2:
         n_start = st.number_input("Başlangıç Değeri (n=)", value=1, step=1)
     with col3:
@@ -60,17 +60,24 @@ with st.form("hesaplama_formu"):
 
 if hesapla:
     n = sp.symbols('n', integer=True, positive=True)
-    donusumler = (standard_transformations + (implicit_multiplication_application, convert_xor))
+    
+    # --- YENİ EKLENEN OTOMATİK FİLTRE VE TEMİZLİK ---
     islenen = expr_str.replace("ln", "log").replace("e", "exp(1)")
+    islenen = islenen.replace("−", "-") # Kopya/Yapıştır kaynaklı hatalı eksi işaretini düzelt
+    islenen = islenen.replace("–", "-") # Farklı tipteki uzun tireleri düzelt
+    islenen = islenen.replace("{", "(").replace("}", ")") # LaTeX süslü parantezlerini normal paranteze çevir
+    islenen = islenen.replace(",", ".") # Virgüllü sayıları yazılımın anladığı noktaya çevir
+    islenen = islenen.replace(" ", "") # Boşlukları temizle
+    
+    donusumler = (standard_transformations + (implicit_multiplication_application, convert_xor))
     
     try:
         expr = parse_expr(islenen, transformations=donusumler)
         
-        # --- ÖĞRETMEN HATA KONTROLÜ (Başlangıç Değeri) ---
         ilk_terim = expr.subs(n, n_start)
         if ilk_terim.has(sp.zoo) or ilk_terim.has(sp.nan) or "I" in str(ilk_terim.evalf()):
-            st.error(f"👨‍🏫 **Öğretmen Uyarısı:** Başlangıç değerini yanlış seçtiniz! $n={n_start}$ için bu formül tanımsızdır (Örneğin paydayı sıfır yapıyor veya negatif kök/logaritma içeriyor olabilir). Lütfen başlangıç değerini değiştirin.")
-            st.stop() # Hata varsa kodu burada durdur
+            st.error(f"👨‍🏫 **Öğretmen Uyarısı:** Başlangıç değerini yanlış seçtiniz! $n={n_start}$ için bu formül tanımsızdır (Örneğin paydayı sıfır yapıyor). Lütfen başlangıç değerini değiştirin.")
+            st.stop()
             
         st.latex(r"\sum_{n=" + str(n_start) + r"}^{" + str(n_end) + r"} \left(" + sp.latex(expr) + r"\right)")
         
@@ -95,7 +102,7 @@ if hesapla:
         fig.update_layout(title="Kısmi Toplamların Eğilimi", xaxis_title="n (Terim Sayısı)", yaxis_title="Değer", template="plotly_white", hovermode="x unified")
         st.plotly_chart(fig, use_container_width=True)
 
-        # 5. ÖĞRETMEN GÖZÜNDEN TEORİK ANALİZ (HANGİ TEST KULLANILMALI?)
+        # 5. ÖĞRETMEN GÖZÜNDEN TEORİK ANALİZ
         st.markdown("### 👨‍🏫 Öğretmen Notu: Bu Soru Nasıl Çözülür?")
         
         lim_val = sp.limit(sp.Abs(expr), n, sp.oo)
@@ -131,4 +138,4 @@ if hesapla:
             st.warning("Bu seri standart testlerle kesin olarak belirlenemeyecek kadar karmaşık (Belirsiz).")
 
     except Exception as e:
-         st.error(f"Formül okunamadı. Lütfen matematiksel yazım kurallarına dikkat edin (Örn: 2n yerine 2*n).")
+         st.error(f"Formül çevrilemedi. Yazılımın formülü anlayamamasına sebep olan teknik detay: {e}")
