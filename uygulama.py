@@ -30,15 +30,14 @@ def guvenli_float(deger):
 def model_olustur():
     veri_satirlari = []
     for _ in range(400):
-        # ML'e öğrettiğimiz yeni matematiksel özellikler
         lim_num = random.choice([0, 0, 0, random.uniform(0.1, 5)]) 
         oran_num = random.uniform(0.1, 2.5)
         kok_num = oran_num + random.uniform(-0.2, 0.2)
         has_fac = random.choice([0, 1])
-        has_n_n = random.choice([0, 1]) # n^n durumu
+        has_n_n = random.choice([0, 1])
         has_log = random.choice([0, 1])
         is_alt = random.choice([0, 1])
-        is_rational = random.choice([0, 1]) # Rasyonel (Polinom/Polinom) durumu
+        is_rational = random.choice([0, 1])
         
         yakinsak_mi = 1 if (oran_num < 0.95 or kok_num < 0.95) and lim_num == 0 else 0
         veri_satirlari.append([lim_num, oran_num, kok_num, has_fac, has_n_n, has_log, is_alt, is_rational, yakinsak_mi])
@@ -55,7 +54,7 @@ st.markdown("### ✍️ Matematiksel Formül ve Sınırlar")
 with st.form("hesaplama_formu"):
     col1, col2, col3 = st.columns([3, 1, 1])
     with col1:
-        expr_str = st.text_input("Genel Terimi giriniz (Örn: (-1)^n/n, n^n/n!, 1/(n*(n+1))):", "(-1)^n/n")
+        expr_str = st.text_input("Genel Terimi giriniz (Örn: cos(n)/n, (-1)^n/n, n^n/n!):", "cos(n)/n")
     with col2:
         n_start = st.number_input("Başlangıç Değeri =", value=1, step=1)
     with col3:
@@ -102,7 +101,23 @@ if hesapla:
         fig.update_layout(title="Kısmi Toplamların Eğilimi", xaxis_title=f"Terim Sayısı ({degisken})", template="plotly_white", hovermode="x unified")
         st.plotly_chart(fig, use_container_width=True)
 
-        # --- MUTLAK VE KOŞULLU YAKINSAKLIK KONTROLÜ ---
+        # --- YENİ EKLENEN ML TAHMİN MOTORU ---
+        islenen_str = str(expr).replace(" ", "")
+        lim_num = guvenli_float(sp.limit(sp.Abs(expr), degisken, sp.oo))
+        oran_num = guvenli_float(sp.limit(sp.Abs(expr.subs(degisken, degisken + 1) / expr), degisken, sp.oo))
+        kok_num = guvenli_float(sp.limit(sp.Abs(expr)**(1/degisken), degisken, sp.oo))
+        
+        has_fac_val = 1 if expr.has(sp.factorial) else 0
+        has_n_n_val = 1 if f"{degisken}**{degisken}" in islenen_str else 0
+        has_log_val = 1 if expr.has(sp.log) else 0
+        is_alt_val = 1 if "(-1)**" in islenen_str or "(-1)^" in expr_str else 0
+        is_rat_val = 1 if "/" in islenen_str else 0
+        
+        yeni_veri = pd.DataFrame([[lim_num, oran_num, kok_num, has_fac_val, has_n_n_val, has_log_val, is_alt_val, is_rat_val]], columns=["Terim_Limiti", "Oran_Limiti", "Kok_Limiti", "Faktoriyel_Var_Mi", "N_Uzeri_N_Var_Mi", "Log_Var_Mi", "Alterne_Mi", "Rasyonel_Mi"])
+        ml_olasilik = ml_model.predict_proba(yeni_veri)[0][1]
+        ml_karari = "YAKINSAK" if ml_olasilik > 0.5 else "IRAKSAK"
+
+        # --- SEMBOLİK (SYMPY) YAKINSAKLIK KONTROLÜ ---
         try:
             gercek_sonuc = sp.Sum(expr, (degisken, n_start, sp.oo)).is_convergent()
             mutlak_sonuc = sp.Sum(sp.Abs(expr), (degisken, n_start, sp.oo)).is_convergent()
@@ -110,15 +125,15 @@ if hesapla:
             gercek_sonuc = None
             mutlak_sonuc = None
 
-        # --- SENİN YAZDIĞIN TABLOYA GÖRE ÖĞRETMEN NOTU ---
+        # --- ÖĞRETMEN NOTU (Trigonometri Düzeltildi) ---
         st.markdown("### 👨‍🏫 Öğretmen Notu: Bu Soru İçin Hangi Test Uygundur?")
         
-        islenen_str = str(expr).replace(" ", "")
         not_metni = ""
-        lim_num = guvenli_float(sp.limit(sp.Abs(expr), degisken, sp.oo))
-
-        if lim_num != 0 and lim_num != 999 and "sin" not in islenen_str and "cos" not in islenen_str:
+        
+        if lim_num != 0 and lim_num != 999 and not (expr.has(sp.sin) or expr.has(sp.cos)):
             not_metni = "**N. Terim Testi:** Serinin genel teriminin limiti sıfır olmadığı için, test tablosuna bakmaya gerek kalmadan seri **Iraksaktır**."
+        elif expr.has(sp.sin) or expr.has(sp.cos) or expr.has(sp.tan) or expr.has(sp.cot):
+            not_metni = f"İfadede trigonometrik fonksiyonlar ($\sin, \cos$ vb.) bulunuyor. Bu fonksiyonlar $-1$ ile $1$ arasında dalgalanır. Eğer paydada güçlü bir seri varsa ($n^2$ gibi) **Karşılaştırma (Sıkıştırma) Testi** uygulanır. Ancak $\cos({degisken})/{degisken}$ gibi durumlarda seri mutlak yakınsak değildir; dalgalanmadan dolayı **Dirichlet Testi** veya **Abel Testi** kullanılarak koşullu yakınsadığı ispatlanır."
         elif "(-1)**" in islenen_str or "(-1)^" in expr_str:
             not_metni = f"İfadede $(-1)^{degisken}$ bulunuyor. Bu bir **Alterne Seri**'dir. Mutlak yakınsaklık kontrolü yapılmalı, genel terimin azalarak sıfıra gittiği **Leibniz Testi** ile kanıtlanmalıdır."
         elif expr.has(sp.factorial):
@@ -130,29 +145,32 @@ if hesapla:
         elif expr.has(sp.log):
             not_metni = "İfadede logaritma ($\ln$) fonksiyonu var. Türevi alındığında rasyonel bir ifadeye döndüğü için, bu tip sorularda **İntegral Testi** en sağlıklı sonucu verir."
         elif ("/" in expr_str) and (f"{degisken}*" in islenen_str or "+" in islenen_str) and ("**" not in islenen_str or str(degisken)+"**2" in islenen_str or str(degisken)+"**3" in islenen_str):
-            # Basit rasyonel ve p-serisi ayrımı
             if "1/(" in expr_str and "+" not in expr_str and "-" not in expr_str:
                 not_metni = f"Bu formül $1/n^p$ yapısına sahip bir **P-Serisi** formudur. $p$ kuvvetinin 1'den büyük olup olmadığına bakılarak çözülür."
             else:
                 not_metni = "Bu ifade polinom bölü polinom şeklinde **Rasyonel bir ifadedir**. En yüksek dereceli terimler çekilerek uygun bir P-serisi ile **Limit Karşılaştırma Testi** yapılmalıdır."
         elif expr_str.count(str(degisken)) > 1 and "-" in expr_str:
-            not_metni = "İfade parçalanabilir bir yapıya benziyor. Eğer terimler birbirini götürüyorsa (örn: $1/n - 1/(n+1)$), bu bir **Teleskopik Seri**'dir ve kısmı toplamların limitine doğrudan bakılarak çözülür."
+            not_metni = "İfade parçalanabilir bir yapıya benziyor. Eğer terimler birbirini götürüyorsa, bu bir **Teleskopik Seri**'dir ve kısmı toplamların limitine doğrudan bakılarak çözülür."
         else:
             not_metni = "Bu seri standart kuralların birleşimini içeriyor. Genel terimin gidişatına göre Oran, Kök veya Limit Karşılaştırma testlerinden biri denenmelidir."
 
         st.write(f"> {not_metni}")
 
-        # --- KOŞULLU / MUTLAK YAKINSAKLIK SONUCU ---
+        # --- YAKINSAKLIK SONUCU VE ML DEVREYE GİRİŞİ ---
         st.markdown("### 🎯 Analiz Sonucu")
         if gercek_sonuc is not None:
             if gercek_sonuc == True and mutlak_sonuc == True:
                 st.success("✅ **SONUÇ: MUTLAK YAKINSAK** (Serinin kendisi de, mutlak değeri de yakınsıyor)")
             elif gercek_sonuc == True and mutlak_sonuc == False:
-                st.warning("⚠️ **SONUÇ: KOŞULLU YAKINSAK** (Seri yakınsıyor ancak mutlak değeri ıraksıyor. Klasik bir Leibniz durumu!)")
+                st.warning("⚠️ **SONUÇ: KOŞULLU YAKINSAK** (Seri yakınsıyor ancak mutlak değeri ıraksıyor. Klasik bir dalgalanma/Leibniz durumu!)")
             else:
                 st.error("❌ **SONUÇ: IRAKSAK**")
         else:
-            st.info("Bu seri klasik testlerle SymPy tarafından kesin olarak belirlenemedi. ML tahmini ve Öğretmen Notu'na göre karar verilmelidir.")
+            st.warning("⚙️ **Sembolik Çözüm Yetersiz:** Bu seri standart klasik testlerle SymPy tarafından kesin olarak çözülemedi.")
+            if ml_karari == "YAKINSAK":
+                st.success(f"🤖 **YAPAY ZEKA TAHMİNİ:** Makine Öğrenmesi Modeli, özellik çıkarımlarına (limit, oran) dayanarak bu serinin **%{ml_olasilik*100:.1f}** olasılıkla **YAKINSAK** olduğunu öngörüyor.")
+            else:
+                st.error(f"🤖 **YAPAY ZEKA TAHMİNİ:** Makine Öğrenmesi Modeli, özellik çıkarımlarına (limit, oran) dayanarak bu serinin **%{(1-ml_olasilik)*100:.1f}** olasılıkla **IRAKSAK** olduğunu öngörüyor.")
 
     except Exception as e:
          st.error(f"Formül çevrilemedi veya hesaplanırken karmaşık bir asimptota denk gelindi. Matematiksel olarak daha sade bir formül girmeyi deneyin. (Teknik detay: {e})")
